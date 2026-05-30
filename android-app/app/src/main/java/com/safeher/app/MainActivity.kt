@@ -298,9 +298,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 setCamera(camera)
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setVideoSource(MediaRecorder.VideoSource.CAMERA)
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+                @Suppress("DEPRECATION")
+                setProfile(android.media.CamcorderProfile.get(android.media.CamcorderProfile.QUALITY_LOW))
                 setOutputFile(videoFile!!.absolutePath)
                 prepare()
                 start()
@@ -314,7 +313,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(this, "Failed to start recording", Toast.LENGTH_SHORT).show()
+            mediaRecorder?.release()
+            mediaRecorder = null
+            @Suppress("DEPRECATION")
+            camera?.release()
+            camera = null
+            Toast.makeText(this, "Failed to start recording: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
