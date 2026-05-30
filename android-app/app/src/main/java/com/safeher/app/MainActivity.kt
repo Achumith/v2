@@ -215,11 +215,25 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 for (i in 0 until contactsArray.length()) {
                     val phoneNumber = contactsArray.getString(i)
                     if (phoneNumber.isNotBlank()) {
+                        val intent = Intent("com.safeher.app.SMS_SENT")
+                        intent.putExtra("phone_number", phoneNumber)
+                        intent.putExtra("message", message)
+                        val pendingIntent = android.app.PendingIntent.getBroadcast(
+                            this@MainActivity,
+                            i,
+                            intent,
+                            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                        )
+
                         val parts = smsManager.divideMessage(message)
                         if (parts.size > 1) {
-                            smsManager.sendMultipartTextMessage(phoneNumber, null, parts, null, null)
+                            val pendingIntents = ArrayList<android.app.PendingIntent>()
+                            for (j in 0 until parts.size) {
+                                pendingIntents.add(pendingIntent) // track status on all parts
+                            }
+                            smsManager.sendMultipartTextMessage(phoneNumber, null, parts, pendingIntents, null)
                         } else {
-                            smsManager.sendTextMessage(phoneNumber, null, message, null, null)
+                            smsManager.sendTextMessage(phoneNumber, null, message, pendingIntent, null)
                         }
                         successCount++
                     }
