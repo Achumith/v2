@@ -180,11 +180,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     async function geocode(address) {
-        try {
-            const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
-            const d = await r.json();
-            return d.length ? [parseFloat(d[0].lat), parseFloat(d[0].lon)] : null;
-        } catch { return null; }
+        return new Promise((resolve) => {
+            const geocoder = new google.maps.Geocoder();
+            geocoder.geocode({ address: address }, (results, status) => {
+                if (status === 'OK' && results && results.length > 0) {
+                    resolve([results[0].geometry.location.lat(), results[0].geometry.location.lng()]);
+                } else {
+                    console.error("Google Geocoder failed: " + status);
+                    resolve(null);
+                }
+            });
+        });
     }
 
     function getCurrentGPS() {
