@@ -3,50 +3,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // ════════════════════════════════════════════
     // 1. MAP INITIALISATION
     // ════════════════════════════════════════════
-    const map = L.map('map', { zoomControl: false }).setView([12.9716, 77.5946], 14);
+    const defaultStyle = [
+        { elementType: "geometry", stylers: [{ color: "#f5e6ed" }] },
+        { elementType: "labels.text.fill", stylers: [{ color: "#6b4a7a" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#fbf3f6" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#d4b8e0" }] },
+        { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+        { featureType: "poi", stylers: [{ visibility: "off" }] }
+    ];
 
-    const MAP_LAYERS = {
-        dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap &amp; CartoDB', subdomains: 'abcd', maxZoom: 20
-        }),
-        light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap &amp; CartoDB', subdomains: 'abcd', maxZoom: 20
-        }),
-        satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: 'Tiles &copy; Esri', maxZoom: 20
-        }),
-        streets: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap', maxZoom: 20
-        })
-    };
-
-    let activeMapLayer = MAP_LAYERS.dark;
-    activeMapLayer.addTo(map);
-
-    // Custom Icons
-    const makeIcon = (color, emoji) => L.divIcon({
-        className: '',
-        html: `<div style="background:${color};width:28px;height:28px;border-radius:50%;
-               box-shadow:0 0 14px ${color};display:flex;align-items:center;
-               justify-content:center;font-size:15px;border:2px solid rgba(255,255,255,0.9);">${emoji}</div>`,
-        iconSize: [28, 28], iconAnchor: [14, 14]
+    const map = new google.maps.Map(document.getElementById('map'), {
+        center: { lat: 12.9716, lng: 77.5946 },
+        zoom: 14,
+        disableDefaultUI: true,
+        zoomControl: false,
+        styles: defaultStyle
     });
 
     const icons = {
-        police:    makeIcon('#2979FF', '🛡️'),
-        hospital:  makeIcon('#FF1744', '🏥'),
-        mall:      makeIcon('#00E676', '🛍️'),
-        generic:   makeIcon('#00E676', '📍')
+        police:   { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#2979FF', fillOpacity: 1, strokeWeight: 2, strokeColor: '#fff' },
+        hospital: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#FF1744', fillOpacity: 1, strokeWeight: 2, strokeColor: '#fff' },
+        mall:     { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#00E676', fillOpacity: 1, strokeWeight: 2, strokeColor: '#fff' },
+        generic:  { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#00E676', fillOpacity: 1, strokeWeight: 2, strokeColor: '#fff' }
     };
 
-    const liveGpsIcon = L.divIcon({
-        className: '',
-        html: '<div class="live-gps-marker"></div>',
-        iconSize: [18, 18], iconAnchor: [9, 9]
-    });
+    const liveGpsIcon = { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#9b72cf', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 3 };
 
-    const safeSpotsLayer = L.layerGroup().addTo(map);
-
+    let safeSpotsMarkers = [];
 
     // ════════════════════════════════════════════
     // 2. MAP STYLE SWITCHER
@@ -60,13 +43,14 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.style-tile').forEach(b => b.classList.remove('active'));
             e.currentTarget.classList.add('active');
 
-            map.removeLayer(activeMapLayer);
-            activeMapLayer = MAP_LAYERS[e.currentTarget.dataset.style];
-            activeMapLayer.addTo(map);
-
-            // Keep route layers on top
-            [safeRouteLayer, fastRouteLayer].forEach(l => { if (l) l.bringToFront(); });
-
+            const style = e.currentTarget.dataset.style;
+            if (style === 'dark') {
+                map.setOptions({ styles: defaultStyle, mapTypeId: 'roadmap' });
+            } else if (style === 'satellite') {
+                map.setOptions({ styles: [], mapTypeId: 'satellite' });
+            } else {
+                map.setOptions({ styles: [], mapTypeId: 'roadmap' });
+            }
             setTimeout(() => styleModal.classList.add('hidden'), 180);
         });
     });
@@ -81,6 +65,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeNav = () => { sideNav.classList.remove('open'); sideNavOverlay.classList.add('hidden'); };
 
     document.getElementById('menu-btn').addEventListener('click', openNav);
+    document.getElementById('collapse-search-btn').addEventListener('click', () => {
+        document.getElementById('search-card').classList.toggle('minimized');
+    });
+    document.getElementById('collapse-route-btn').addEventListener('click', () => {
+        document.getElementById('route-sheet').classList.toggle('minimized');
+    });
     document.getElementById('close-nav-btn').addEventListener('click', closeNav);
     sideNavOverlay.addEventListener('click', closeNav);
 
@@ -193,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!navigator.geolocation) return reject('No Geolocation');
             navigator.geolocation.getCurrentPosition(
                 p => resolve([p.coords.latitude, p.coords.longitude]),
-                reject, { enableHighAccuracy: true, timeout: 6000 }
+                reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
             );
         });
     }
@@ -217,12 +207,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function fetchSafeSpotsAlongRoute(bounds) {
-        safeSpotsLayer.clearLayers();
-        const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
+        safeSpotsMarkers.forEach(m => m.setMap(null));
+        safeSpotsMarkers = [];
+        const bbox = `${bounds.getSouthWest().lat()},${bounds.getSouthWest().lng()},${bounds.getNorthEast().lat()},${bounds.getNorthEast().lng()}`;
         const query = `[out:json][timeout:25];(nwr["amenity"="police"](${bbox});nwr["amenity"="hospital"](${bbox});nwr["shop"="mall"](${bbox}););out center;`;
         try {
             const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
             const d = await r.json();
+            const infoWindow = new google.maps.InfoWindow();
             (d.elements || []).forEach(el => {
                 const lat  = el.type === 'node' ? el.lat : el.center.lat;
                 const lon  = el.type === 'node' ? el.lon : el.center.lon;
@@ -231,13 +223,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (el.tags?.amenity === 'police')   { type = 'Police Station'; icon = icons.police; }
                 else if (el.tags?.amenity === 'hospital') { type = 'Hospital'; icon = icons.hospital; }
                 else if (el.tags?.shop === 'mall')   { type = 'Mall'; icon = icons.mall; }
-                L.marker([lat, lon], { icon }).bindPopup(`<b>${type}</b><br>${name}`).addTo(safeSpotsLayer);
+                
+                const marker = new google.maps.Marker({
+                    position: { lat, lng: lon },
+                    map: map,
+                    icon: icon,
+                    title: type
+                });
+                marker.addListener('click', () => {
+                    infoWindow.setContent(`<b>${type}</b><br>${name}`);
+                    infoWindow.open(map, marker);
+                });
+                safeSpotsMarkers.push(marker);
             });
         } catch (e) { console.warn('Safe spots fetch failed', e); }
     }
 
     async function calculateSafetyScore(bounds, distKm) {
-        const bbox  = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
+        const bbox  = `${bounds.getSouthWest().lat()},${bounds.getSouthWest().lng()},${bounds.getNorthEast().lat()},${bounds.getNorthEast().lng()}`;
         const query = `[out:json][timeout:15];(nwr["amenity"="police"](${bbox});nwr["amenity"="hospital"](${bbox});nwr["shop"="mall"](${bbox}););out tags;`;
         let police = 0, hospital = 0, mall = 0;
         try {
@@ -249,10 +252,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (el.tags?.shop === 'mall')   mall++;
             });
         } catch (e) { console.warn('Score fetch failed', e); }
-        return Math.min(99, Math.max(20, Math.round(50 + police * 5 + hospital * 3 + mall - distKm * 2)));
+        
+        const hour = new Date().getHours();
+        const isDaytime = (hour >= 6 && hour < 18);
+        const baseScore = isDaytime ? 75 : 50; // Boost base score during the day
+        
+        return Math.min(99, Math.max(20, Math.round(baseScore + police * 5 + hospital * 3 + mall - distKm * 2)));
     }
 
     const searchBtn = document.getElementById('search-btn');
+
+    function createRoutePolyline(route, color, weight, opacity) {
+        const coords = route.geometry.coordinates.map(c => ({ lat: c[1], lng: c[0] }));
+        const polyline = new google.maps.Polyline({
+            path: coords,
+            strokeColor: color,
+            strokeWeight: weight,
+            strokeOpacity: opacity,
+            map: map
+        });
+        const bounds = new google.maps.LatLngBounds();
+        coords.forEach(c => bounds.extend(c));
+        polyline.getBounds = () => bounds;
+        return polyline;
+    }
 
     searchBtn.addEventListener('click', async () => {
         searchBtn.innerHTML = '<ion-icon name="hourglass-outline" style="vertical-align:-3px; margin-right:6px;"></ion-icon>Routing…';
@@ -293,12 +316,13 @@ document.addEventListener('DOMContentLoaded', () => {
         window.activeSafeRouteData = safeRoute;
         window.activeFastRouteData = fastRoute;
 
-        if (safeRouteLayer) map.removeLayer(safeRouteLayer);
-        if (fastRouteLayer) map.removeLayer(fastRouteLayer);
+        if (safeRouteLayer) safeRouteLayer.setMap(null);
+        if (fastRouteLayer) fastRouteLayer.setMap(null);
 
-        safeRouteLayer = L.geoJSON(safeRoute.geometry, { style: { color: '#00E676', weight: 5, opacity: 0.95 } }).addTo(map);
-        fastRouteLayer = L.geoJSON(fastRoute.geometry, { style: { color: '#FFB300', weight: 3, opacity: 0.3  } }).addTo(map);
-        safeRouteLayer.bringToFront();
+        safeRouteLayer = createRoutePolyline(safeRoute, '#00E676', 5, 0.95);
+        safeRouteLayer.setOptions({ zIndex: 10 });
+        fastRouteLayer = createRoutePolyline(fastRoute, '#FFB300', 3, 0.3);
+        fastRouteLayer.setOptions({ zIndex: 5 });
 
         const safeMin  = Math.round(safeRoute.duration / 60);
         const safeKm   = (safeRoute.distance / 1000).toFixed(1);
@@ -320,7 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('nav-eta').innerText  = `${safeMin} min`;
         document.getElementById('nav-dist').innerText = `${safeKm} km`;
 
-        map.fitBounds(safeRouteLayer.getBounds(), { padding: [50, 50] });
+        map.fitBounds(safeRouteLayer.getBounds());
         fetchSafeSpotsAlongRoute(safeRouteLayer.getBounds());
 
         // AI Safety Brief
@@ -334,8 +358,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const modeCtx = transportSubMode === 'cab' ? 'traveling in a cab/auto' :
                         transportMode === 'foot'   ? 'walking on foot' : 'driving a personal vehicle';
+        
+        const hour = new Date().getHours();
+        const timeCtx = (hour >= 6 && hour < 18) ? 'daytime' : 'nighttime';
+        const aiPrompt = `route distance of ${safeKm} km, ${modeCtx}, time of day is ${timeCtx}, streets: ${streets.join(', ')}. Keep it short (max 2 sentences). Emphasize that because it is ${timeCtx}, certain risks (like poorly lit areas) are ${timeCtx === 'daytime' ? 'not a factor, boosting the safety rating' : 'a major factor, requiring more caution'}.`;
 
-        fetchAIResponse(`route distance of ${safeKm} km, ${modeCtx}, streets: ${streets.join(', ')}`).then(r => {
+        fetchAIResponse(aiPrompt).then(r => {
             briefEl.innerText = r;
         });
 
@@ -350,8 +378,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         searchBtn.innerHTML = '<ion-icon name="shield-checkmark-outline" style="vertical-align:-3px; margin-right:6px;"></ion-icon>Find Safe Route';
 
-        if (!liveMarker) liveMarker = L.marker(currentStartCoords, { icon: liveGpsIcon }).addTo(map);
-        else             liveMarker.setLatLng(currentStartCoords);
+        if (!liveMarker) {
+            liveMarker = new google.maps.Marker({
+                position: { lat: currentStartCoords[0], lng: currentStartCoords[1] },
+                map: map,
+                icon: liveGpsIcon
+            });
+        } else {
+            liveMarker.setPosition({ lat: currentStartCoords[0], lng: currentStartCoords[1] });
+        }
     });
 
     // Route selection toggle
@@ -360,9 +395,8 @@ document.addEventListener('DOMContentLoaded', () => {
         currentActiveRouteType = 'safe';
         document.getElementById('select-safe-route').classList.add('active-route');
         document.getElementById('select-fast-route').classList.remove('active-route');
-        safeRouteLayer.setStyle({ opacity: 0.95, weight: 5 });
-        fastRouteLayer.setStyle({ opacity: 0.3, weight: 3 });
-        safeRouteLayer.bringToFront();
+        safeRouteLayer.setOptions({ strokeOpacity: 0.95, strokeWeight: 5, zIndex: 10 });
+        fastRouteLayer.setOptions({ strokeOpacity: 0.3, strokeWeight: 3, zIndex: 5 });
         fetchSafeSpotsAlongRoute(safeRouteLayer.getBounds());
     });
 
@@ -371,9 +405,8 @@ document.addEventListener('DOMContentLoaded', () => {
         currentActiveRouteType = 'fast';
         document.getElementById('select-fast-route').classList.add('active-route');
         document.getElementById('select-safe-route').classList.remove('active-route');
-        fastRouteLayer.setStyle({ opacity: 0.95, weight: 5 });
-        safeRouteLayer.setStyle({ opacity: 0.3, weight: 3 });
-        fastRouteLayer.bringToFront();
+        fastRouteLayer.setOptions({ strokeOpacity: 0.95, strokeWeight: 5, zIndex: 10 });
+        safeRouteLayer.setOptions({ strokeOpacity: 0.3, strokeWeight: 3, zIndex: 5 });
         fetchSafeSpotsAlongRoute(fastRouteLayer.getBounds());
     });
 
@@ -408,10 +441,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (navigator.geolocation) {
             watchId = navigator.geolocation.watchPosition(
                 pos => {
-                    const ll = [pos.coords.latitude, pos.coords.longitude];
-                    if (!liveMarker) liveMarker = L.marker(ll, { icon: liveGpsIcon }).addTo(map);
-                    else             liveMarker.setLatLng(ll);
-                    map.panTo(ll, { animate: true });
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    if (!liveMarker) {
+                        liveMarker = new google.maps.Marker({
+                            position: { lat, lng },
+                            map: map,
+                            icon: liveGpsIcon
+                        });
+                    } else {
+                        liveMarker.setPosition({ lat, lng });
+                    }
+                    map.panTo({ lat, lng });
                 },
                 err => console.warn('GPS watch error', err),
                 { enableHighAccuracy: true, maximumAge: 0 }
@@ -441,8 +482,10 @@ document.addEventListener('DOMContentLoaded', () => {
         sosWrapper.classList.add('pulse-active');
         setTimeout(() => sosWrapper.classList.remove('pulse-active'), 1800);
 
-        const center  = liveMarker ? liveMarker.getLatLng() : map.getCenter();
-        const locUrl  = `http://maps.google.com/?q=${center.lat},${center.lng}`;
+        const center  = liveMarker ? liveMarker.getPosition() : map.getCenter();
+        const lat = typeof center.lat === 'function' ? center.lat() : center.lat;
+        const lng = typeof center.lng === 'function' ? center.lng() : center.lng;
+        const locUrl  = `http://maps.google.com/?q=${lat},${lng}`;
         let message   = `🚨 EMERGENCY SOS from SafeHer: I need help immediately!\nMy location: ${locUrl}`;
 
         if (transportSubMode === 'cab') {
@@ -506,14 +549,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('submit-hazard').addEventListener('click', () => {
         const sel    = document.getElementById('hazard-type');
         const type   = sel.options[sel.selectedIndex].text;
-        const center = liveMarker ? liveMarker.getLatLng() : map.getCenter();
-        const hIcon  = L.divIcon({
-            className: '',
-            html: '<div style="background:#FFB300;width:14px;height:14px;border-radius:50%;box-shadow:0 0 10px #FFB300;"></div>',
-            iconSize: [14, 14]
+        const center = liveMarker ? liveMarker.getPosition() : map.getCenter();
+        const marker = new google.maps.Marker({
+            position: center,
+            map: map,
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#FFB300', fillOpacity: 1, strokeWeight: 0 },
+            title: `⚠️ Report - ${type}`
         });
-        L.marker(center, { icon: hIcon }).addTo(map)
-            .bindPopup(`<b>⚠️ Report</b><br>${type}`).openPopup();
+        const infoWindow = new google.maps.InfoWindow({ content: `<b>⚠️ Report</b><br>${type}` });
+        infoWindow.open(map, marker);
+        marker.addListener('click', () => infoWindow.open(map, marker));
         document.getElementById('hazard-modal').classList.add('hidden');
     });
 
@@ -575,9 +620,10 @@ document.addEventListener('DOMContentLoaded', () => {
         ratingModal.classList.add('hidden');
         document.getElementById('search-card').classList.remove('hidden');
         document.getElementById('nav-header-live').classList.add('hidden');
-        if (safeRouteLayer) map.removeLayer(safeRouteLayer);
-        if (fastRouteLayer) map.removeLayer(fastRouteLayer);
-        map.setView([12.9716, 77.5946], 14);
+        if (safeRouteLayer) safeRouteLayer.setMap(null);
+        if (fastRouteLayer) fastRouteLayer.setMap(null);
+        map.setCenter({ lat: 12.9716, lng: 77.5946 });
+        map.setZoom(14);
         currentRating = 0;
         stars.forEach(s => { s.name = 'star-outline'; s.classList.remove('active'); });
         document.getElementById('rating-comment').value = '';
@@ -588,13 +634,18 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('submit-rating-btn').addEventListener('click', () => {
         if (currentRating > 0) {
             const trips = JSON.parse(localStorage.getItem('safeHerTrips')) || [];
+            const now = new Date();
+            const hour = now.getHours();
+            const timeOfDay = (hour >= 6 && hour < 18) ? 'Day' : 'Night';
+            
             trips.push({
-                date:    new Date().toISOString(),
+                date:    now.toISOString(),
                 start:   document.getElementById('start-input').value.trim() || 'Current Location',
                 dest:    document.getElementById('destination-input').value.trim() || 'Destination',
                 mode:    transportMode,
                 rating:  currentRating,
-                comment: document.getElementById('rating-comment').value.trim()
+                comment: document.getElementById('rating-comment').value.trim(),
+                timeOfDay: timeOfDay
             });
             localStorage.setItem('safeHerTrips', JSON.stringify(trips));
         }
@@ -610,24 +661,67 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('total-trips-stat').innerText = trips.length;
         const routesList = document.getElementById('past-routes-list');
         routesList.innerHTML = '';
+        
+        const chartEl = document.getElementById('safety-chart');
+        if (window.safetyChartInstance) {
+            window.safetyChartInstance.destroy();
+        }
 
         if (!trips.length) {
             document.getElementById('avg-safety-stat').innerText = '--';
             routesList.innerHTML = '<p style="color:var(--text-muted);text-align:center;margin-top:24px;">No trips recorded yet. Start navigating!</p>';
+            if (chartEl) chartEl.style.display = 'none';
             return;
         }
+        
+        if (chartEl) chartEl.style.display = 'block';
 
         const avg = (trips.reduce((s, t) => s + t.rating, 0) / trips.length).toFixed(1);
         document.getElementById('avg-safety-stat').innerText = `${avg} / 5`;
 
+        // Render Chart
+        if (chartEl && window.Chart) {
+            const ctx = chartEl.getContext('2d');
+            const labels = trips.map(t => new Date(t.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+            const data = trips.map(t => t.rating);
+            
+            window.safetyChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Safety Rating',
+                        data: data,
+                        borderColor: '#FF2D6B',
+                        backgroundColor: 'rgba(255, 45, 107, 0.2)',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#FFD600',
+                        pointBorderColor: '#fff',
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { min: 0, max: 5, ticks: { stepSize: 1, color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        x: { ticks: { color: '#aaa' }, grid: { display: false } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
         [...trips].reverse().forEach(trip => {
             const date = new Date(trip.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            const timeIcon = trip.timeOfDay === 'Day' ? '☀️ Day' : (trip.timeOfDay === 'Night' ? '🌙 Night' : '');
             const card = document.createElement('div');
             card.className = 'route-history-card';
             card.innerHTML = `
                 <div class="route-history-info">
                     <h5>${trip.start} → ${trip.dest}</h5>
-                    <p>${date} · ${trip.mode}</p>
+                    <p>${date} · ${trip.mode} ${timeIcon ? `· <span style="color:var(--brand-pink); font-weight:600;">${timeIcon}</span>` : ''}</p>
                 </div>
                 <div class="route-history-rating">
                     ${trip.rating} <ion-icon name="star"></ion-icon>
@@ -638,5 +732,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('close-reports-btn').addEventListener('click', () =>
         document.getElementById('reports-modal').classList.add('hidden'));
+
+
 
 });
