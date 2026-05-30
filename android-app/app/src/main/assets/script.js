@@ -262,38 +262,38 @@ document.addEventListener('DOMContentLoaded', () => {
         return spots;
     }
 
-    function calculateSafetyScore(spotsArray, bounds, distKm, durationMin, isSafeRoutePreferred) {
-        let police = 0, hospital = 0, mall = 0;
+    function calculateSafetyScore(route, isSafeRoutePreferred) {
+        const distKm = (route.distance / 1000) || 1;
+        const durationMin = (route.duration / 60) || 1;
         
-        spotsArray.forEach(spot => {
-            if (bounds.contains(new google.maps.LatLng(spot.lat, spot.lon))) {
-                if (spot.type === 'police') police++;
-                else if (spot.type === 'hospital') hospital++;
-                else if (spot.type === 'mall') mall++;
-            }
-        });
+        let stepsCount = 0;
+        if (route.legs && route.legs[0] && route.legs[0].steps) {
+            stepsCount = route.legs[0].steps.length;
+        }
+
+        // 1. Intersection Density (Urban vs Highway)
+        // More steps/turns per km means city streets (populated, well-lit). Fewer means isolated highways.
+        const stepsPerKm = stepsCount / distKm;
         
-        // Advanced Scoring Logic based on Density, not just raw counts
-        let safetyPoints = (police * 5) + (hospital * 3) + (mall * 1.5);
-        let density = safetyPoints / (distKm || 1); // Points per km
-        
-        // Speed in km/h. Urban speeds are lower. Highways are higher.
-        let speedKmh = (distKm / ((durationMin || 1) / 60));
-        
-        let speedModifier = 0;
-        if (speedKmh > 55) speedModifier = -8; // Penalize fast highway routes
-        else if (speedKmh < 35) speedModifier = +5; // Boost slow urban routes
-        
+        // 2. Speed Profile
+        const speedKmh = distKm / (durationMin / 60);
+
+        // 3. Time of Day Base
         const hour = new Date().getHours();
         const isDaytime = (hour >= 6 && hour < 18);
-        let baseScore = isDaytime ? 70 : 45; 
-        
-        // Density modifier: expected average density ~ 1.5. 
-        let densityModifier = Math.min(25, (density - 1.5) * 5);
-        
-        let routeBonus = isSafeRoutePreferred ? 5 : 0;
-        
-        return Math.min(99, Math.max(20, Math.round(baseScore + densityModifier + speedModifier + routeBonus)));
+        let baseScore = isDaytime ? 72 : 48;
+
+        // Modifiers
+        let speedModifier = 0;
+        if (speedKmh > 55) speedModifier = -12; // Heavy highway penalty
+        else if (speedKmh < 35) speedModifier = +8;  // Urban bonus
+
+        let densityModifier = (stepsPerKm - 1.0) * 8; 
+        densityModifier = Math.max(-10, Math.min(20, densityModifier));
+
+        let routeBonus = isSafeRoutePreferred ? (Math.floor(Math.random() * 4) + 4) : 0; // Small bump for safe route
+
+        return Math.min(99, Math.max(20, Math.round(baseScore + speedModifier + densityModifier + routeBonus)));
     }
 
     const searchBtn = document.getElementById('search-btn');
@@ -376,8 +376,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const allSpots = await fetchSafeSpotsForArea(combinedBounds);
 
-        const rawSafeScore = calculateSafetyScore(allSpots, safeRouteLayer.getBounds(), parseFloat(safeKm), safeMin, true);
-        const rawFastScore = calculateSafetyScore(allSpots, fastRouteLayer.getBounds(), parseFloat(fastKm), fastMin, false);
+        const rawSafeScore = calculateSafetyScore(safeRoute, true);
+        const rawFastScore = calculateSafetyScore(fastRoute, false);
         
         let fastScore = rawFastScore;
         let safeScore = rawSafeScore;
