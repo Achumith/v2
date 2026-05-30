@@ -299,7 +299,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setVideoSource(MediaRecorder.VideoSource.CAMERA)
                 @Suppress("DEPRECATION")
-                setProfile(android.media.CamcorderProfile.get(android.media.CamcorderProfile.QUALITY_LOW))
+                val profile = when {
+                    android.media.CamcorderProfile.hasProfile(android.media.CamcorderProfile.QUALITY_720P) -> 
+                        android.media.CamcorderProfile.get(android.media.CamcorderProfile.QUALITY_720P)
+                    android.media.CamcorderProfile.hasProfile(android.media.CamcorderProfile.QUALITY_1080P) -> 
+                        android.media.CamcorderProfile.get(android.media.CamcorderProfile.QUALITY_1080P)
+                    else -> 
+                        android.media.CamcorderProfile.get(android.media.CamcorderProfile.QUALITY_HIGH)
+                }
+                @Suppress("DEPRECATION")
+                setProfile(profile)
                 setOutputFile(videoFile!!.absolutePath)
                 prepare()
                 start()
