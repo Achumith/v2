@@ -209,65 +209,56 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchSafeSpotsForArea(bounds) {
         safeSpotsMarkers.forEach(m => m.setMap(null));
         safeSpotsMarkers = [];
-        const bbox = `${bounds.getSouthWest().lat()},${bounds.getSouthWest().lng()},${bounds.getNorthEast().lat()},${bounds.getNorthEast().lng()}`;
-        const query = `[out:json][timeout:25];(nwr["amenity"="police"](${bbox});nwr["amenity"="hospital"](${bbox});nwr["shop"="mall"](${bbox}););out center;`;
+        
         let spots = [];
+        const service = new google.maps.places.PlacesService(map);
+        
+        const searchPlaces = (typeStr, customType) => {
+            return new Promise((resolve) => {
+                service.nearbySearch({ bounds: bounds, type: typeStr }, (results, status) => {
+                    if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+                        const infoWindow = new google.maps.InfoWindow();
+                        results.forEach(place => {
+                            if (!place.geometry || !place.geometry.location) return;
+                            const lat = place.geometry.location.lat();
+                            const lon = place.geometry.location.lng();
+                            const name = place.name;
+                            
+                            spots.push({ lat, lon, type: customType, name });
+                            
+                            let icon = icons.generic;
+                            if (customType === 'police') icon = icons.police;
+                            if (customType === 'hospital') icon = icons.hospital;
+                            if (customType === 'mall') icon = icons.mall;
+                            
+                            const marker = new google.maps.Marker({
+                                position: { lat, lng: lon },
+                                map: map,
+                                icon: icon,
+                                title: customType.toUpperCase()
+                            });
+                            marker.addListener('click', () => {
+                                infoWindow.setContent(`<b>${customType.toUpperCase()}</b><br>${name}`);
+                                infoWindow.open(map, marker);
+                            });
+                            safeSpotsMarkers.push(marker);
+                        });
+                    }
+                    resolve();
+                });
+            });
+        };
+
         try {
-            const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
-            const d = await r.json();
-            const infoWindow = new google.maps.InfoWindow();
-            (d.elements || []).forEach(el => {
-                const lat  = el.type === 'node' ? el.lat : el.center.lat;
-                const lon  = el.type === 'node' ? el.lon : el.center.lon;
-                const name = el.tags?.name || 'Safe Spot';
-                let type = 'Unknown', icon = icons.generic;
-                if (el.tags?.amenity === 'police')   { type = 'police'; icon = icons.police; }
-                else if (el.tags?.amenity === 'hospital') { type = 'hospital'; icon = icons.hospital; }
-                else if (el.tags?.shop === 'mall')   { type = 'mall'; icon = icons.mall; }
-                
-                spots.push({ lat, lon, type, name });
-                
-                const marker = new google.maps.Marker({
-                    position: { lat, lng: lon },
-                    map: map,
-                    icon: icon,
-                    title: type.toUpperCase()
-                });
-                marker.addListener('click', () => {
-                    infoWindow.setContent(`<b>${type.toUpperCase()}</b><br>${name}`);
-                    infoWindow.open(map, marker);
-                });
-                safeSpotsMarkers.push(marker);
-            });
-        } catch (e) { 
-            console.warn('Safe spots fetch failed or timed out', e);
-            // Provide mock demonstration data so the UI doesn't look broken when the free API times out
-            const center = bounds.getCenter();
-            spots = [
-                { lat: center.lat() + 0.005, lon: center.lng() + 0.005, type: 'police', name: 'City Police Station (Demo)' },
-                { lat: center.lat() - 0.005, lon: center.lng() - 0.005, type: 'hospital', name: 'City Hospital (Demo)' },
-                { lat: center.lat() + 0.002, lon: center.lng() - 0.008, type: 'mall', name: 'Shopping Mall (Demo)' }
-            ];
-            const infoWindow = new google.maps.InfoWindow();
-            spots.forEach(s => {
-                let icon = icons.generic;
-                if (s.type === 'police') icon = icons.police;
-                if (s.type === 'hospital') icon = icons.hospital;
-                if (s.type === 'mall') icon = icons.mall;
-                
-                const marker = new google.maps.Marker({
-                    position: { lat: s.lat, lng: s.lon },
-                    map: map,
-                    icon: icon,
-                    title: s.type.toUpperCase()
-                });
-                marker.addListener('click', () => {
-                    infoWindow.setContent(`<b>${s.type.toUpperCase()}</b><br>${s.name}`);
-                    infoWindow.open(map, marker);
-                });
-                safeSpotsMarkers.push(marker);
-            });
+            await Promise.all([
+                searchPlaces('police', 'police'),
+                searchPlaces('hospital', 'hospital'),
+                searchPlaces('shopping_mall', 'mall')
+            ]);
+        } catch (e) {
+            console.error("Places API failed", e);
         }
+        
         return spots;
     }
 
