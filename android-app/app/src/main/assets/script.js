@@ -677,15 +677,19 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     document.getElementById('cancel-sos-btn').addEventListener('click', cancelSOS);
+    document.getElementById('cancel-sos-btn').addEventListener('touchstart', (e) => { e.preventDefault(); cancelSOS(); }, { passive: false });
 
-    document.getElementById('send-now-btn').addEventListener('click', () => {
+    const triggerSendNow = () => {
         if (sosCountdownTimer) {
             clearInterval(sosCountdownTimer);
             sosCountdownTimer = null;
         }
         document.getElementById('sos-countdown-overlay').style.display = 'none';
         executeRealSOS();
-    });
+    };
+
+    document.getElementById('send-now-btn').addEventListener('click', triggerSendNow);
+    document.getElementById('send-now-btn').addEventListener('touchstart', (e) => { e.preventDefault(); triggerSendNow(); }, { passive: false });
 
     const triggerSOS = () => {
         if (sosCountdownTimer || isAlarmRinging) return; // already counting down or already active
