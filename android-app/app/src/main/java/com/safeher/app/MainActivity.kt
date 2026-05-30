@@ -21,6 +21,13 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import android.media.MediaRecorder
+import android.content.Intent
+import android.content.ActivityNotFoundException
+import androidx.core.content.FileProvider
+import java.io.File
+import android.os.Handler
+import android.os.Looper
 import org.json.JSONArray
 import kotlin.math.sqrt
 
@@ -66,7 +73,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         webSettings.allowFileAccessFromFileURLs = true
         webSettings.allowUniversalAccessFromFileURLs = true
         webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        webSettings.cacheMode = WebSettings.LOAD_NO_CACHE
 
+        webView.clearCache(true)
         webView.webViewClient = WebViewClient()
 
         webView.webChromeClient = object : WebChromeClient() {
@@ -160,6 +169,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
             permissionsToRequest.add(Manifest.permission.SEND_SMS)
         }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
+        }
 
         if (permissionsToRequest.isNotEmpty()) {
             ActivityCompat.requestPermissions(
@@ -221,6 +233,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 }
             }
         }
+
+        @JavascriptInterface
+        fun startSosAudioRecording() {
+            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "Audio Permission not granted! Cannot record SOS.", Toast.LENGTH_SHORT).show()
+                }
+                return
+            }
+            runOnUiThread {
+                recordAndShareAudioWhatsApp()
+            }
+        }
     }
 
     inner class AndroidShakeBridge {
@@ -235,6 +260,75 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         } else {
             @Suppress("DEPRECATION")
             super.onBackPressed()
+        }
+    }
+
+    private var mediaRecorder: MediaRecorder? = null
+    private var audioFile: File? = null
+
+    private fun recordAndShareAudioWhatsApp() {
+        try {
+            val audioDir = File(cacheDir, "audio")
+            if (!audioDir.exists()) audioDir.mkdirs()
+            audioFile = File(audioDir, "sos_recording.aac")
+            
+            mediaRecorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                MediaRecorder(this)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
+            
+            mediaRecorder?.apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setOutputFile(audioFile!!.absolutePath)
+                prepare()
+                start()
+            }
+            
+            Toast.makeText(this, "Recording SOS Audio (30s)...", Toast.LENGTH_LONG).show()
+            
+            Handler(Looper.getMainLooper()).postDelayed({
+                stopRecordingAndShare()
+            }, 30000)
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Failed to start recording", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun stopRecordingAndShare() {
+        try {
+            mediaRecorder?.apply {
+                stop()
+                release()
+            }
+            mediaRecorder = null
+            
+            if (audioFile != null && audioFile!!.exists()) {
+                val uri = FileProvider.getUriForFile(this, "com.safeher.app.fileprovider", audioFile!!)
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "audio/*"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_TEXT, "URGENT: SafeHer SOS Audio Recording!")
+                    setPackage("com.whatsapp")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                
+                try {
+                    startActivity(shareIntent)
+                } catch (e: ActivityNotFoundException) {
+                    Toast.makeText(this, "WhatsApp is not installed. Choose an app to send.", Toast.LENGTH_LONG).show()
+                    shareIntent.setPackage(null)
+                    startActivity(Intent.createChooser(shareIntent, "Share SOS Audio via"))
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Failed to stop recording or share", Toast.LENGTH_SHORT).show()
         }
     }
 }
