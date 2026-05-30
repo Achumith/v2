@@ -20,6 +20,15 @@ document.addEventListener('DOMContentLoaded', () => {
         styles: defaultStyle
     });
 
+    const startInput = document.getElementById('start-input');
+    const destInput = document.getElementById('destination-input');
+    
+    const startAutocomplete = new google.maps.places.Autocomplete(startInput);
+    startAutocomplete.bindTo('bounds', map);
+    
+    const destAutocomplete = new google.maps.places.Autocomplete(destInput);
+    destAutocomplete.bindTo('bounds', map);
+
     const icons = {
         police:   { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#2979FF', fillOpacity: 1, strokeWeight: 2, strokeColor: '#fff' },
         hospital: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#FF1744', fillOpacity: 1, strokeWeight: 2, strokeColor: '#fff' },
