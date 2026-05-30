@@ -25,9 +25,27 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const startAutocomplete = new google.maps.places.Autocomplete(startInput);
     startAutocomplete.bindTo('bounds', map);
+    startAutocomplete.addListener('place_changed', () => {
+        const place = startAutocomplete.getPlace();
+        if (place.geometry && place.geometry.location) {
+            startInput.dataset.lat = place.geometry.location.lat();
+            startInput.dataset.lng = place.geometry.location.lng();
+        }
+    });
     
     const destAutocomplete = new google.maps.places.Autocomplete(destInput);
     destAutocomplete.bindTo('bounds', map);
+    destAutocomplete.addListener('place_changed', () => {
+        const place = destAutocomplete.getPlace();
+        if (place.geometry && place.geometry.location) {
+            destInput.dataset.lat = place.geometry.location.lat();
+            destInput.dataset.lng = place.geometry.location.lng();
+        }
+    });
+
+    // Clear datasets if user manually edits the input after selecting
+    startInput.addEventListener('input', () => { delete startInput.dataset.lat; delete startInput.dataset.lng; });
+    destInput.addEventListener('input', () => { delete destInput.dataset.lat; delete destInput.dataset.lng; });
 
     const icons = {
         police:   { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#2979FF', fillOpacity: 1, strokeWeight: 2, strokeColor: '#fff' },
@@ -180,17 +198,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     async function geocode(address) {
-        return new Promise((resolve) => {
-            const geocoder = new google.maps.Geocoder();
-            geocoder.geocode({ address: address }, (results, status) => {
-                if (status === 'OK' && results && results.length > 0) {
-                    resolve([results[0].geometry.location.lat(), results[0].geometry.location.lng()]);
-                } else {
-                    console.error("Google Geocoder failed: " + status);
-                    resolve(null);
-                }
-            });
-        });
+        try {
+            const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
+            const d = await r.json();
+            return d.length ? [parseFloat(d[0].lat), parseFloat(d[0].lon)] : null;
+        } catch { return null; }
     }
 
     function getCurrentGPS() {
@@ -345,12 +357,17 @@ document.addEventListener('DOMContentLoaded', () => {
     searchBtn.addEventListener('click', async () => {
         searchBtn.innerHTML = '<ion-icon name="hourglass-outline" style="vertical-align:-3px; margin-right:6px;"></ion-icon>Routing…';
 
-        const startVal = document.getElementById('start-input').value.trim();
-        const destVal  = document.getElementById('destination-input').value.trim();
+        const startInputEl = document.getElementById('start-input');
+        const destInputEl  = document.getElementById('destination-input');
+        const startVal = startInputEl.value.trim();
+        const destVal  = destInputEl.value.trim();
 
         if (!startVal || startVal.toLowerCase().includes('current') || startVal.toLowerCase().includes('gps')) {
             try { currentStartCoords = await getCurrentGPS(); }
             catch { alert('GPS unavailable, defaulting to central Bangalore'); currentStartCoords = [12.9716, 77.5946]; }
+        } else if (startInputEl.dataset.lat && startInputEl.dataset.lng) {
+            // Bypass geocoding if selected from autocomplete
+            currentStartCoords = [parseFloat(startInputEl.dataset.lat), parseFloat(startInputEl.dataset.lng)];
         } else {
             currentStartCoords = await geocode(startVal);
         }
@@ -360,7 +377,13 @@ document.addEventListener('DOMContentLoaded', () => {
             searchBtn.innerHTML = '<ion-icon name="shield-checkmark-outline" style="vertical-align:-3px; margin-right:6px;"></ion-icon>Find Safe Route';
             return;
         }
-        currentDestCoords = await geocode(destVal);
+        
+        if (destInputEl.dataset.lat && destInputEl.dataset.lng) {
+            // Bypass geocoding if selected from autocomplete
+            currentDestCoords = [parseFloat(destInputEl.dataset.lat), parseFloat(destInputEl.dataset.lng)];
+        } else {
+            currentDestCoords = await geocode(destVal);
+        }
 
         if (!currentStartCoords || !currentDestCoords) {
             alert('Could not find location. Try a more specific address.');
