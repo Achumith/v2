@@ -172,6 +172,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
         }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.CAMERA)
+        }
 
         if (permissionsToRequest.isNotEmpty()) {
             ActivityCompat.requestPermissions(
@@ -235,15 +238,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
 
         @JavascriptInterface
-        fun startSosAudioRecording() {
-            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        fun startSosVideoRecording() {
+            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity, "Audio Permission not granted! Cannot record SOS.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Camera/Audio Permission not granted! Cannot record SOS.", Toast.LENGTH_SHORT).show()
                 }
                 return
             }
             runOnUiThread {
-                recordAndShareAudioWhatsApp()
+                recordAndShareVideoWhatsApp()
             }
         }
     }
@@ -264,13 +268,23 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private var mediaRecorder: MediaRecorder? = null
-    private var audioFile: File? = null
+    private var videoFile: File? = null
+    private var camera: android.hardware.Camera? = null
 
-    private fun recordAndShareAudioWhatsApp() {
+    private fun recordAndShareVideoWhatsApp() {
         try {
-            val audioDir = File(cacheDir, "audio")
-            if (!audioDir.exists()) audioDir.mkdirs()
-            audioFile = File(audioDir, "sos_recording.aac")
+            val videoDir = File(cacheDir, "video")
+            if (!videoDir.exists()) videoDir.mkdirs()
+            videoFile = File(videoDir, "sos_evidence.mp4")
+            
+            // Open legacy camera to record silently without preview
+            @Suppress("DEPRECATION")
+            camera = android.hardware.Camera.open()
+            val surfaceTexture = android.graphics.SurfaceTexture(10)
+            @Suppress("DEPRECATION")
+            camera?.setPreviewTexture(surfaceTexture)
+            @Suppress("DEPRECATION")
+            camera?.unlock()
             
             mediaRecorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                 MediaRecorder(this)
@@ -280,15 +294,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
             
             mediaRecorder?.apply {
+                @Suppress("DEPRECATION")
+                setCamera(camera)
                 setAudioSource(MediaRecorder.AudioSource.MIC)
-                setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS)
+                setVideoSource(MediaRecorder.VideoSource.CAMERA)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                setOutputFile(audioFile!!.absolutePath)
+                setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+                setOutputFile(videoFile!!.absolutePath)
                 prepare()
                 start()
             }
             
-            Toast.makeText(this, "Recording SOS Audio (30s)...", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Recording SOS Video & Audio (30s)...", Toast.LENGTH_LONG).show()
             
             Handler(Looper.getMainLooper()).postDelayed({
                 stopRecordingAndShare()
@@ -308,12 +326,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
             mediaRecorder = null
             
-            if (audioFile != null && audioFile!!.exists()) {
-                val uri = FileProvider.getUriForFile(this, "com.safeher.app.fileprovider", audioFile!!)
+            @Suppress("DEPRECATION")
+            camera?.lock()
+            @Suppress("DEPRECATION")
+            camera?.release()
+            camera = null
+            
+            if (videoFile != null && videoFile!!.exists()) {
+                val uri = FileProvider.getUriForFile(this, "com.safeher.app.fileprovider", videoFile!!)
                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "audio/*"
+                    type = "video/mp4"
                     putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_TEXT, "URGENT: SafeHer SOS Audio Recording!")
+                    putExtra(Intent.EXTRA_TEXT, "URGENT: SafeHer SOS Video Evidence!")
                     setPackage("com.whatsapp")
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }

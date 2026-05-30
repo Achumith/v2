@@ -522,12 +522,12 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch(e) { console.error('SMS Error:', e); }
             
             try {
-                if (typeof window.AndroidSMS.startSosAudioRecording === 'function') {
-                    window.AndroidSMS.startSosAudioRecording();
+                if (typeof window.AndroidSMS.startSosVideoRecording === 'function') {
+                    window.AndroidSMS.startSosVideoRecording();
                 } else {
-                    alert('Audio recording function not found in app! You might need to completely Rebuild/Reinstall the app from Android Studio to clear the old cache.');
+                    alert('Video recording function not found in app! You might need to completely Rebuild/Reinstall the app from Android Studio to clear the old cache.');
                 }
-            } catch(e) { alert('Audio bridge error: ' + e); }
+            } catch(e) { alert('Video bridge error: ' + e); }
         } else {
             alert(`[Web Preview]\nSMS would be sent to: ${phones.join(', ') || 'no contacts saved'}\n\n${message}`);
         }
