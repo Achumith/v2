@@ -138,6 +138,19 @@
             </div>
         </div>
 
+        <!-- ── SOS Countdown Overlay ── -->
+        <div id="sos-countdown-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; flex-direction: column; justify-content: center; align-items: center; backdrop-filter: blur(10px);">
+            <ion-icon name="warning-outline" style="font-size: 80px; color: #FF1744; margin-bottom: 20px; animation: pulse 1s infinite;"></ion-icon>
+            <h1 style="color: white; margin: 0; font-family: 'Outfit', sans-serif;">SOS ACTIVATED</h1>
+            <p style="color: #bbb; font-family: 'Outfit', sans-serif; text-align: center; margin-top: 10px; max-width: 80%;">Sending emergency alerts and video in</p>
+            <div id="sos-timer-text" style="font-size: 70px; font-weight: bold; color: #FF1744; margin: 20px 0; font-family: 'Outfit', sans-serif;">20</div>
+            
+            <div style="display: flex; gap: 20px; margin-top: 10px; flex-direction: column; width: 80%; max-width: 300px;">
+                <button id="send-now-btn" style="background: #FF1744; border: none; color: white; padding: 15px; border-radius: 30px; font-weight: bold; font-family: 'Outfit', sans-serif; font-size: 18px; cursor: pointer; box-shadow: 0 4px 15px rgba(255,23,68,0.5);">SEND NOW</button>
+                <button id="cancel-sos-btn" style="background: transparent; border: 2px solid white; color: white; padding: 15px; border-radius: 30px; font-weight: bold; font-family: 'Outfit', sans-serif; font-size: 18px; cursor: pointer;">CANCEL</button>
+            </div>
+        </div>
+
         <!-- ── Route Options Sheet ── -->
         <div class="bottom-sheet glass-panel hidden" id="route-sheet">
             <div class="sheet-handle"></div>
