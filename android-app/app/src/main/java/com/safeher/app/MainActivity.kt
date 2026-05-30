@@ -40,7 +40,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     // Shake detection state
     private var lastShakeTime: Long = 0
     private var shakeCount = 0
-    private val SHAKE_THRESHOLD = 12f
+    private val SHAKE_THRESHOLD = 2.7f
     private val SHAKE_SLOP_TIME_MS = 500
     private val SHAKE_COUNT_RESET_TIME_MS = 3000
     private val SHAKES_TO_TRIGGER = 3

@@ -577,35 +577,39 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isAlarmRinging) return;
         isAlarmRinging = true;
 
-        if (!audioCtx) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
-
-        oscillator = audioCtx.createOscillator();
-        gainNode = audioCtx.createGain();
-        
-        oscillator.type = 'square'; // Very loud, piercing wave
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        
-        gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
-        oscillator.start();
-
-        let isHigh = true;
-        sirenInterval = setInterval(() => {
-            if (!audioCtx || !oscillator) return;
-            if (isHigh) {
-                oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime);
-            } else {
-                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+        try {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
-            isHigh = !isHigh;
-        }, 400);
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
 
-        document.getElementById('stop-alarm-container').style.display = 'flex';
+            oscillator = audioCtx.createOscillator();
+            gainNode = audioCtx.createGain();
+            
+            oscillator.type = 'square'; // Very loud, piercing wave
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
+            oscillator.start();
+
+            let isHigh = true;
+            sirenInterval = setInterval(() => {
+                if (!audioCtx || !oscillator) return;
+                if (isHigh) {
+                    oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime);
+                } else {
+                    oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+                }
+                isHigh = !isHigh;
+            }, 400);
+
+            document.getElementById('stop-alarm-container').style.display = 'flex';
+        } catch(e) {
+            console.error("Failed to start siren", e);
+        }
     }
 
     function stopSiren() {
