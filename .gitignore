@@ -1,0 +1,23 @@
+# Gradle
+.gradle/
+build/
+**/build/
+*.ap_
+local.properties
+
+# Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Generated
+gen/
+out/
+
+# Keys / secrets
+*.jks
+*.keystore
