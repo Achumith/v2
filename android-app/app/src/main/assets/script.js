@@ -206,11 +206,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'arrow-up-outline';
     }
 
-    async function fetchSafeSpotsAlongRoute(bounds) {
+    async function fetchSafeSpotsForArea(bounds) {
         safeSpotsMarkers.forEach(m => m.setMap(null));
         safeSpotsMarkers = [];
         const bbox = `${bounds.getSouthWest().lat()},${bounds.getSouthWest().lng()},${bounds.getNorthEast().lat()},${bounds.getNorthEast().lng()}`;
         const query = `[out:json][timeout:25];(nwr["amenity"="police"](${bbox});nwr["amenity"="hospital"](${bbox});nwr["shop"="mall"](${bbox}););out center;`;
+        let spots = [];
         try {
             const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
             const d = await r.json();
@@ -220,38 +221,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 const lon  = el.type === 'node' ? el.lon : el.center.lon;
                 const name = el.tags?.name || 'Safe Spot';
                 let type = 'Unknown', icon = icons.generic;
-                if (el.tags?.amenity === 'police')   { type = 'Police Station'; icon = icons.police; }
-                else if (el.tags?.amenity === 'hospital') { type = 'Hospital'; icon = icons.hospital; }
-                else if (el.tags?.shop === 'mall')   { type = 'Mall'; icon = icons.mall; }
+                if (el.tags?.amenity === 'police')   { type = 'police'; icon = icons.police; }
+                else if (el.tags?.amenity === 'hospital') { type = 'hospital'; icon = icons.hospital; }
+                else if (el.tags?.shop === 'mall')   { type = 'mall'; icon = icons.mall; }
+                
+                spots.push({ lat, lon, type, name });
                 
                 const marker = new google.maps.Marker({
                     position: { lat, lng: lon },
                     map: map,
                     icon: icon,
-                    title: type
+                    title: type.toUpperCase()
                 });
                 marker.addListener('click', () => {
-                    infoWindow.setContent(`<b>${type}</b><br>${name}`);
+                    infoWindow.setContent(`<b>${type.toUpperCase()}</b><br>${name}`);
                     infoWindow.open(map, marker);
                 });
                 safeSpotsMarkers.push(marker);
             });
         } catch (e) { console.warn('Safe spots fetch failed', e); }
+        return spots;
     }
 
-    async function calculateSafetyScore(bounds, distKm, durationMin, isSafeRoutePreferred) {
-        const bbox  = `${bounds.getSouthWest().lat()},${bounds.getSouthWest().lng()},${bounds.getNorthEast().lat()},${bounds.getNorthEast().lng()}`;
-        const query = `[out:json][timeout:15];(nwr["amenity"="police"](${bbox});nwr["amenity"="hospital"](${bbox});nwr["shop"="mall"](${bbox}););out tags;`;
+    function calculateSafetyScore(spotsArray, bounds, distKm, durationMin, isSafeRoutePreferred) {
         let police = 0, hospital = 0, mall = 0;
-        try {
-            const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
-            const d = await r.json();
-            (d.elements || []).forEach(el => {
-                if (el.tags?.amenity === 'police')   police++;
-                else if (el.tags?.amenity === 'hospital') hospital++;
-                else if (el.tags?.shop === 'mall')   mall++;
-            });
-        } catch (e) { console.warn('Score fetch failed', e); }
+        
+        spotsArray.forEach(spot => {
+            if (bounds.contains(new google.maps.LatLng(spot.lat, spot.lon))) {
+                if (spot.type === 'police') police++;
+                else if (spot.type === 'hospital') hospital++;
+                else if (spot.type === 'mall') mall++;
+            }
+        });
         
         // Advanced Scoring Logic based on Density, not just raw counts
         let safetyPoints = (police * 5) + (hospital * 3) + (mall * 1.5);
@@ -350,10 +351,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('safe-route-score').innerHTML = '<span class="ai-loading" style="font-size:12px;">Scoring…</span>';
         document.getElementById('fast-route-score').innerHTML = '<span class="ai-loading" style="font-size:12px;">Scoring…</span>';
 
-        const [rawSafeScore, rawFastScore] = await Promise.all([
-            calculateSafetyScore(safeRouteLayer.getBounds(), parseFloat(safeKm), safeMin, true),
-            calculateSafetyScore(fastRouteLayer.getBounds(), parseFloat(fastKm), fastMin, false)
-        ]);
+        const combinedBounds = new google.maps.LatLngBounds();
+        combinedBounds.union(safeRouteLayer.getBounds());
+        combinedBounds.union(fastRouteLayer.getBounds());
+        
+        const allSpots = await fetchSafeSpotsForArea(combinedBounds);
+
+        const rawSafeScore = calculateSafetyScore(allSpots, safeRouteLayer.getBounds(), parseFloat(safeKm), safeMin, true);
+        const rawFastScore = calculateSafetyScore(allSpots, fastRouteLayer.getBounds(), parseFloat(fastKm), fastMin, false);
         
         let fastScore = rawFastScore;
         let safeScore = rawSafeScore;
@@ -367,7 +372,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('nav-dist').innerText = `${safeKm} km`;
 
         map.fitBounds(safeRouteLayer.getBounds());
-        fetchSafeSpotsAlongRoute(safeRouteLayer.getBounds());
 
         // AI Safety Brief
         const briefEl = document.getElementById('ai-brief-text');
