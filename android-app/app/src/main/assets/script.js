@@ -627,11 +627,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('stop-alarm-btn').addEventListener('click', stopSiren);
 
-    const triggerSOS = () => {
-        if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
-        sosWrapper.classList.add('pulse-active');
-        setTimeout(() => sosWrapper.classList.remove('pulse-active'), 1800);
-        
+    let sosCountdownTimer = null;
+    let sosCountdownValue = 20;
+
+    const executeRealSOS = () => {
         startSiren();
 
         const center  = liveMarker ? liveMarker.getPosition() : map.getCenter();
@@ -661,6 +660,68 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             alert(`[Web Preview]\nSMS would be sent to: ${phones.join(', ') || 'no contacts saved'}\n\n${message}`);
         }
+    };
+
+    const cancelSOS = () => {
+        if (sosCountdownTimer) {
+            clearInterval(sosCountdownTimer);
+            sosCountdownTimer = null;
+        }
+        document.getElementById('sos-countdown-overlay').style.display = 'none';
+        showShakeToast(); // reusing this to show a quick toast
+        document.getElementById('shake-toast').innerText = "SOS Cancelled";
+        setTimeout(() => document.getElementById('shake-toast').innerText = "Shake phone 3 times to send SOS", 3000);
+    };
+
+    document.getElementById('cancel-sos-btn').addEventListener('click', cancelSOS);
+
+    document.getElementById('send-now-btn').addEventListener('click', () => {
+        if (sosCountdownTimer) {
+            clearInterval(sosCountdownTimer);
+            sosCountdownTimer = null;
+        }
+        document.getElementById('sos-countdown-overlay').style.display = 'none';
+        executeRealSOS();
+    });
+
+    const triggerSOS = () => {
+        if (sosCountdownTimer || isAlarmRinging) return; // already counting down or already active
+
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
+        sosWrapper.classList.add('pulse-active');
+        setTimeout(() => sosWrapper.classList.remove('pulse-active'), 1800);
+        
+        sosCountdownValue = 20;
+        const timerText = document.getElementById('sos-timer-text');
+        timerText.innerText = sosCountdownValue;
+        document.getElementById('sos-countdown-overlay').style.display = 'flex';
+
+        sosCountdownTimer = setInterval(() => {
+            sosCountdownValue--;
+            timerText.innerText = sosCountdownValue;
+            
+            // Warning beep
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gn = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 900;
+                osc.connect(gn);
+                gn.connect(audioCtx.destination);
+                osc.start();
+                gn.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.15);
+                osc.stop(audioCtx.currentTime + 0.15);
+            } catch(e) {}
+
+            if (sosCountdownValue <= 0) {
+                clearInterval(sosCountdownTimer);
+                sosCountdownTimer = null;
+                document.getElementById('sos-countdown-overlay').style.display = 'none';
+                executeRealSOS();
+            }
+        }, 1000);
     };
 
     // Button SOS
