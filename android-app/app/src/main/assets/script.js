@@ -567,10 +567,68 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => shakeToast.classList.remove('visible'), 2800);
     };
 
+    let audioCtx = null;
+    let oscillator = null;
+    let gainNode = null;
+    let sirenInterval = null;
+    let isAlarmRinging = false;
+
+    function startSiren() {
+        if (isAlarmRinging) return;
+        isAlarmRinging = true;
+
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        oscillator = audioCtx.createOscillator();
+        gainNode = audioCtx.createGain();
+        
+        oscillator.type = 'square'; // Very loud, piercing wave
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
+        oscillator.start();
+
+        let isHigh = true;
+        sirenInterval = setInterval(() => {
+            if (!audioCtx || !oscillator) return;
+            if (isHigh) {
+                oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime);
+            } else {
+                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+            }
+            isHigh = !isHigh;
+        }, 400);
+
+        document.getElementById('stop-alarm-container').style.display = 'flex';
+    }
+
+    function stopSiren() {
+        if (!isAlarmRinging) return;
+        isAlarmRinging = false;
+        
+        clearInterval(sirenInterval);
+        if (oscillator) {
+            try { oscillator.stop(); } catch(e){}
+            oscillator.disconnect();
+            oscillator = null;
+        }
+        document.getElementById('stop-alarm-container').style.display = 'none';
+    }
+
+    document.getElementById('stop-alarm-btn').addEventListener('click', stopSiren);
+
     const triggerSOS = () => {
         if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
         sosWrapper.classList.add('pulse-active');
         setTimeout(() => sosWrapper.classList.remove('pulse-active'), 1800);
+        
+        startSiren();
 
         const center  = liveMarker ? liveMarker.getPosition() : map.getCenter();
         const lat = typeof center.lat === 'function' ? center.lat() : center.lat;
